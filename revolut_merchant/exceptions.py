@@ -4,5 +4,17 @@ class RevolutHttpError(Exception):
         self.error_id = error_id
 
 
+class RevolutValidationError(Exception):
+    pass
+
+
+class InvalidOrderStateError(RevolutValidationError):
+    pass
+
+
+class InvalidAmountError(RevolutValidationError):
+    pass
+
+
 def raise_error(status_code, error_id):
     raise RevolutHttpError(status_code, error_id)

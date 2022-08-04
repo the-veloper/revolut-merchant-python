@@ -5,6 +5,8 @@ import json
 import logging
 import requests
 
+from .exceptions import InvalidAmountError, InvalidOrderStateError
+
 try:  # pragma: nocover
     from urllib.parse import urljoin, urlencode  # 3.x
 except ImportError:  # pragma: nocover
@@ -12,7 +14,7 @@ except ImportError:  # pragma: nocover
     from urllib import urlencode
 from . import exceptions, utils
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 _log = logging.getLogger(__name__)
 
@@ -22,8 +24,10 @@ class Client(utils._SetEnv):
     timeout = 10
     _requester = None  # requests.Session()
     _customers = None
+    _orders = None
 
     def __init__(self, access_token, environment, timeout=None):
+        self._orders = {}
         self._set_env(environment)
         self.timeout = timeout
         self._requester = requests.Session()
@@ -73,7 +77,7 @@ class Client(utils._SetEnv):
 
     @property
     def customers(self):
-        if self._customers is not None:
+        if self._customers:
             return self._customers
         _customers = {}
         data = self._get("customers")
@@ -88,6 +92,31 @@ class Client(utils._SetEnv):
             return self._customers[cid]
 
         return Customer(client=self, **self._get(path="customers/{}".format(cid)))
+
+    def get_orders(
+        self,
+        created_before=None,
+        from_created_date=None,
+        to_created_date=None,
+        email=None,
+        merchant_order_ext_ref=None,
+        limit=100,
+    ):
+        if self._orders:
+            return self._orders
+        _orders = {}
+        data = self._get("orders")
+        for order_data in data:
+            order = Order(client=self, **order_data)
+            _orders[order.id] = order
+        self._orders = _orders
+        return self._orders
+
+    def get_order(self, oid):
+        if self._orders and oid in self._orders:
+            return self._orders[oid]
+
+        return Order(client=self, **self._get(path="orders/{}".format(oid)))
 
 
 class _UpdateFromKwargsMixin(object):
@@ -146,3 +175,83 @@ class Customer(_UpdateFromKwargsMixin):
             raise ValueError("Customer not loaded from API.")
 
         self.client._delete("customers/{}".format(self.id))
+
+
+class Order(_UpdateFromKwargsMixin):
+    client = None
+    id = None
+    type = None
+    state = None
+    created_at = None
+    updated_at = None
+    order_amount = None
+    order_outstanding_amount = None
+    completed_at = None
+    settlement_currency = None
+    email = None
+    phone = None
+    description = None
+    capture_mode = None
+    merchant_order_ext_ref = None
+    customer_id = None
+    refunded_amount = None
+    shipping_address = None
+    payments = None
+    related = None
+    public_id = None
+    metadata = None
+
+    def __init__(self, **kwargs):
+        self.client = kwargs.pop("client")
+        self._update(**kwargs)
+
+    def __repr__(self):
+        return "<Order {} State: {} >".format(self.id, self.state)
+
+    def refresh(self):
+        data = self.client._get("orders/{}".format(self.id))
+        self._update(**data)
+        return self
+
+    def capture(self, amount):
+        if amount >= self.order_amount.get("value"):
+            raise InvalidAmountError(
+                "Amount should be less than or equal to the originally captured amount"
+            )
+        data = self.client._post(
+            "orders/{}/capture".format(self.id), data={"amount": amount}
+        )
+        self._update(**data)
+        return self
+
+    def cancel(self):
+        data = self.client._post("orders/{}/cancel".format(self.id))
+        self._update(**data)
+        return self
+
+    def refund(self, amount, description):
+        if self.state != "COMPLETED":
+            raise InvalidOrderStateError("Only a completed order can be refunded")
+        refunded_amount = self.refunded_amount.get("value", 0)
+        if amount + refunded_amount > self.order_amount:
+            raise InvalidAmountError(
+                "Total refunded amount for order {} can be up to {}".format(
+                    self.id, self.order_amount
+                )
+            )
+        data = self.client._post(
+            "orders/{}/refund".format(self.id),
+            data={"amount": amount, "description": description},
+        )
+        self._update(**data)
+        return self
+
+    def confirm(self, payment_method_id=None):
+        if self.state != "PENDING":
+            raise InvalidOrderStateError("Only a pending order can be confirmed")
+        confirm_data = {}
+        if payment_method_id:
+            confirm_data["payment_method_id"] = payment_method_id
+        data = self.client._post("orders/{}/confirm".format(self.id), data=confirm_data)
+        self._update(**data)
+        return self
