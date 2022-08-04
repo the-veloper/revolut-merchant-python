@@ -29,7 +29,7 @@ setup(
     version=version,
     description="Revolut Merchant API client for Python",
     url="https://github.com/the-veloper/revolut-merchant-python/",
-    long_description=open("README.rst", "rb").read().decode("utf-8"),
+    long_description=open("README.md", "rb").read().decode("utf-8"),
     install_requires=open("requirements.txt", "r").read().splitlines(),
     tests_require=open("test_requirements.txt", "r").read().splitlines(),
     setup_requires=[
