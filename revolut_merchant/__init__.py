@@ -14,7 +14,7 @@ except ImportError:  # pragma: nocover
     from urllib import urlencode
 from . import exceptions, utils
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 _log = logging.getLogger(__name__)
 
@@ -188,6 +188,8 @@ class Order(_UpdateFromKwargsMixin):
     order_outstanding_amount = None
     completed_at = None
     settlement_currency = None
+    currency = None
+    amount = None
     email = None
     phone = None
     description = None
@@ -210,6 +212,17 @@ class Order(_UpdateFromKwargsMixin):
 
     def refresh(self):
         data = self.client._get("orders/{}".format(self.id))
+        self._update(**data)
+        return self
+
+    def save(self):
+        if self.id:
+            # @TODO update order
+            raise Exception("Update of order using .save() not supported yet.")
+        data = self.client._post(
+            "orders",
+            {"amount": self.amount, "currency": self.currency, "email": self.email},
+        )
         self._update(**data)
         return self
 
