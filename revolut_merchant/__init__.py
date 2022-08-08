@@ -5,7 +5,11 @@ import json
 import logging
 import requests
 
-from .exceptions import InvalidAmountError, InvalidOrderStateError
+from .exceptions import (
+    InvalidAmountError,
+    InvalidOrderStateError,
+    RevolutValidationError,
+)
 
 try:  # pragma: nocover
     from urllib.parse import urljoin, urlencode  # 3.x
@@ -14,7 +18,7 @@ except ImportError:  # pragma: nocover
     from urllib import urlencode
 from . import exceptions, utils
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 _log = logging.getLogger(__name__)
 
@@ -221,8 +225,16 @@ class Order(_UpdateFromKwargsMixin):
             raise Exception("Update of order using .save() not supported yet.")
         data = self.client._post(
             "orders",
-            {"amount": self.amount, "currency": self.currency, "email": self.email},
+            {"amount": self.amount, "currency": self.currency},
         )
+        if self.customer_id:
+            data["customer_id"] = self.customer_id
+        if self.email:
+            data["email"] = self.email
+        if not self.customer_id and not self.email:
+            raise RevolutValidationError(
+                "Either email or customer id is required to " "recreate an order."
+            )
         self._update(**data)
         return self
 
